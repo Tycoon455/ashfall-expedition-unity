@@ -1,0 +1,32 @@
+# Unity / 团结引擎生成目录
+Library/
+Temp/
+Obj/
+Logs/
+UserSettings/
+Build/
+Builds/
+MemoryCaptures/
+Recordings/
+
+# 构建与运行日志
+*.log
+*_result.txt
+
+# IDE 生成文件
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.user
+*.userprefs
+
+# 调试截图与临时产物
+*_shot.png
+sysinfo.txt
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
