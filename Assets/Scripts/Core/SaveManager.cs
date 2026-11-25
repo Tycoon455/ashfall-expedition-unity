@@ -16,6 +16,14 @@ public class SaveData
     public List<string> bag = new List<string>();
     public List<string> equipped = new List<string>() { "", "", "", "" };
     public int shopRefresh = 0;
+    // 存档发生在营地还是关卡中；老存档缺字段时默认 false，仍按进入关卡处理。
+    public bool inCamp = false;
+    // -1 表示老存档没有记录，读取时保留满状态；新存档会写入实际血量/体力。
+    public float hp = -1f;
+    public float stamina = -1f;
+    // 关卡内存档：本关是否已清场、玩家当时所在的 X 坐标；老存档默认未清场。
+    public bool levelCleared = false;
+    public float playerX = -1f;
     public string savedAt = "";
 }
 
@@ -89,6 +97,7 @@ public static class SaveManager
         if (d == null) return "空槽位";
         ProfessionData p = GameData.Profession(d.profession);
         string name = p == null ? d.profession : p.name;
-        return name + " · 第 " + d.level + " 关 · " + d.gold + " 金 · " + d.savedAt;
+        string stage = d.inCamp ? "营地存档" : (d.levelCleared ? "关卡已清场" : "关卡存档");
+        return name + " · 第 " + d.level + " 关 · " + stage + " · " + d.gold + " 金 · " + d.savedAt;
     }
 }

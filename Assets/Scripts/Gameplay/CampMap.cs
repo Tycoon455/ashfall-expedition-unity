@@ -45,6 +45,7 @@ public class CampMap : MonoBehaviour
     Text nearText;
     bool active;
     float animTime;
+    int currentLevel0;
 
     /// <summary>按目标世界高度放置精灵模型，底部贴地，返回模型对象。</summary>
     GameObject PlaceModel(Transform parent, string name, string spritePath, float x, float height, int order)
@@ -142,6 +143,18 @@ public class CampMap : MonoBehaviour
             16, new Color(0.86f, 0.82f, 0.74f), 40f, 846f, 1200f, 36f);
 
         canvasGo.SetActive(false);
+        EventBus.GoldChanged += OnGoldChanged;
+    }
+
+    void OnDestroy()
+    {
+        EventBus.GoldChanged -= OnGoldChanged;
+    }
+
+    /// <summary>金币变化统一由事件驱动，避免营地顶栏停留在进店前的旧数值。</summary>
+    void OnGoldChanged(int gold)
+    {
+        if (active) RefreshInfo(currentLevel0);
     }
 
     public void Enter(PlayerController p, int levelIndex0)
@@ -164,6 +177,7 @@ public class CampMap : MonoBehaviour
 
     public void RefreshInfo(int levelIndex0)
     {
+        currentLevel0 = levelIndex0;
         if (infoText == null) return;
         infoText.text = "废土营地　|　第 " + (levelIndex0 + 1) + " 关 · " +
             (levelIndex0 < GameData.LevelCount ? GameData.Level(levelIndex0).name : "黑曜王座") +

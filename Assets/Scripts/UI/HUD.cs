@@ -201,6 +201,8 @@ public class HUD : MonoBehaviour
 
     void OnMessage(string msg)
     {
+        // 编辑器自检 / 场景重建时可能残留订阅，组件已销毁就不要再写它的 Text
+        if (messageText == null) return;
         messageText.text = msg;
         messageUntil = Time.unscaledTime + 2.2f;
     }
@@ -212,7 +214,7 @@ public class HUD : MonoBehaviour
         if (staminaBar != null) staminaBar.Tick(dt);
         if (bossBar != null) bossBar.Tick(dt);
 
-        if (Time.unscaledTime > messageUntil && messageText.text.Length > 0)
+        if (messageText != null && Time.unscaledTime > messageUntil && messageText.text.Length > 0)
             messageText.text = "";
         if (exitPromptRoot != null && exitPromptRoot.gameObject.activeSelf && exitPrompt != null)
         {

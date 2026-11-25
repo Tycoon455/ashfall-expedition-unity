@@ -8,9 +8,14 @@ using UnityEngine.UI;
 public class SettingsPanel : MonoBehaviour
 {
     public System.Action OnClose;
+    public System.Action OnSaveExit;
 
     RectTransform root;
     System.Action defaultOnClose;
+    Button resumeButton;
+    Button backButton;
+    Text backLabel;
+    bool inGameSession;
     Button[] modeButtons;
     Text resolutionText;
     Text scaleText;
@@ -119,10 +124,15 @@ public class SettingsPanel : MonoBehaviour
         hintText = UIFactory.AddLabel(root, "Hint", "", 14,
             new Color(0.68f, 0.64f, 0.57f), 30f, 730f, 760f, 28f, TextAnchor.MiddleCenter);
 
-        UIFactory.AddButton(root, "Back", "返回（Esc）", 280f, 760f, 260f, 54f,
-            Close, new Color(0.42f, 0.3f, 0.12f, 1f));
+        resumeButton = UIFactory.AddButton(root, "Resume", "继续游戏（Esc）", 30f, 760f, 370f, 54f,
+            Close, new Color(0.24f, 0.42f, 0.26f, 1f));
+        backButton = UIFactory.AddButton(root, "Back", "返回（Esc）", 280f, 760f, 260f, 54f,
+            FooterBack, new Color(0.42f, 0.3f, 0.12f, 1f));
+        backLabel = backButton.transform.Find("Text") != null
+            ? backButton.transform.Find("Text").GetComponent<Text>() : null;
 
         Refresh();
+        ApplyFooter();
         root.gameObject.SetActive(false); // 默认隐藏，Open() 时打开
     }
 
@@ -160,12 +170,49 @@ public class SettingsPanel : MonoBehaviour
         if (scaleText != null) scaleText.text = DisplaySettings.UiScaleLabel();
     }
 
-    /// <summary>从主菜单打开时沿用默认返回主菜单；从游戏中打开时传入游戏的关闭回调。</summary>
+    /// <summary>从主菜单打开时沿用默认返回主菜单；从游戏中打开时用 OpenInGame。</summary>
     public void Open(System.Action onClose = null)
     {
+        inGameSession = false;
         OnClose = onClose != null ? onClose : defaultOnClose;
         Refresh();
+        ApplyFooter();
         root.gameObject.SetActive(true);
+    }
+
+    /// <summary>游戏内打开：出现「继续游戏」和「保存并回主菜单」两个出口。</summary>
+    public void OpenInGame(System.Action onClose)
+    {
+        inGameSession = true;
+        OnClose = onClose;
+        Refresh();
+        ApplyFooter();
+        root.gameObject.SetActive(true);
+    }
+
+    void ApplyFooter()
+    {
+        if (resumeButton == null || backButton == null) return;
+        resumeButton.gameObject.SetActive(inGameSession);
+        RectTransform brt = backButton.GetComponent<RectTransform>();
+        if (inGameSession)
+        {
+            brt.anchoredPosition = new Vector2(420f, -760f);
+            brt.sizeDelta = new Vector2(370f, 54f);
+            if (backLabel != null) backLabel.text = "保存并回主菜单";
+        }
+        else
+        {
+            brt.anchoredPosition = new Vector2(280f, -760f);
+            brt.sizeDelta = new Vector2(260f, 54f);
+            if (backLabel != null) backLabel.text = "返回（Esc）";
+        }
+    }
+
+    void FooterBack()
+    {
+        if (inGameSession && OnSaveExit != null) OnSaveExit();
+        else Close();
     }
 
     public void Close()

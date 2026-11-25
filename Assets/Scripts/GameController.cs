@@ -104,6 +104,7 @@ public class GameController : MonoBehaviour
         settingsGo.transform.SetParent(transform, false);
         settings = settingsGo.AddComponent<SettingsPanel>();
         settings.Build(canvas.transform, ShowMenu);
+        settings.OnSaveExit = SaveAndShowMenu;
 
         GameObject shopGo = new GameObject("ShopPanel");
         shopGo.transform.SetParent(transform, false);
@@ -339,8 +340,24 @@ public class GameController : MonoBehaviour
         inventory.LoadFrom(data);
         bonus.Refresh(inventory);
         player.Setup(ProfessionId, inventory, bonus, 1.5f);
+        if (data.hp >= 0f && player.Health != null)
+            player.Health.CurrentHp = Mathf.Clamp(data.hp, 1f, player.Health.MaxHp);
+        if (data.stamina >= 0f && player.Stamina != null)
+            player.Stamina.Current = Mathf.Clamp(data.stamina, 0f, player.Stamina.Max);
         CaptureCampCheckpoint(); // 载入状态即为本关前置营地基线
-        EnterLevel();
+        // 回到存档点：营地存档回营地，关卡存档进关卡；不再一律推进到下一关
+        if (data.inCamp) EnterCamp();
+        else
+        {
+            EnterLevel();
+            // 已清场的关卡直接保留出口，并回到存档时的位置，不用重打一遍
+            if (data.levelCleared && levels != null) levels.RestoreCleared(true);
+            if (data.playerX >= 0f && player != null && levels != null)
+            {
+                float x = Mathf.Clamp(data.playerX, 1.5f, Mathf.Max(1.5f, levels.WorldWidth - 1.5f));
+                player.transform.position = new Vector3(x, player.transform.position.y, 0f);
+            }
+        }
     }
 
     public void SaveGame(int slot)
@@ -349,6 +366,11 @@ public class GameController : MonoBehaviour
         data.profession = ProfessionId;
         data.level = LevelIndex0 + 1;
         data.playerLevel = 1;
+        data.inCamp = State == GameState.Camp;
+        data.hp = player != null && player.Health != null ? player.Health.CurrentHp : -1f;
+        data.stamina = player != null && player.Stamina != null ? player.Stamina.Current : -1f;
+        data.levelCleared = State == GameState.Level && levels != null && levels.ExitReady;
+        data.playerX = player != null ? player.transform.position.x : -1f;
         inventory.WriteTo(data);
         SaveManager.Save(slot, data);
     }
@@ -450,9 +472,10 @@ public class GameController : MonoBehaviour
             overlay.gameObject.SetActive(true);
             return;
         }
-        SaveGame(1);
         // 统一入口：清掉关卡场景并隐藏关卡 HUD，再进入营地独立地图
         EnterCamp();
+        // 先切到营地再存档，确保读取时回到这个营地存档点，而不是直接进下一关
+        SaveGame(1);
         // 通关金币的可见反馈：在营地玩家位置生成金光宝珠
         if (player != null)
             LootDrop.Spawn(player.transform.position, LootDrop.Kind.Gold, "", 0, "通关奖励 +" + clearGold + " 金");
@@ -486,7 +509,7 @@ public class GameController : MonoBehaviour
         if (player != null) player.InputEnabled = false;
         if (campMap != null) campMap.Paused = true;
         Time.timeScale = 0f;
-        settings.Open(CloseSettingsFromGame);
+        settings.OpenInGame(CloseSettingsFromGame);
     }
 
     void CloseSettingsFromGame()
@@ -530,6 +553,13 @@ public class GameController : MonoBehaviour
             campMap.Paused = false;
             if (State == GameState.Camp) campMap.RefreshInfo(LevelIndex0);
         }
+    }
+
+    /// <summary>设置面板里的「保存并回主菜单」：先落盘当前进度，再回主菜单。</summary>
+    public void SaveAndShowMenu()
+    {
+        if (State == GameState.Camp || State == GameState.Level) SaveGame(1);
+        ShowMenu();
     }
 
     public void ShowMenu()

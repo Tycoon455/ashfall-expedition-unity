@@ -78,12 +78,21 @@ public static class SmokeSelfTest
             SaveData sd = new SaveData();
             sd.profession = "mage"; sd.level = 5; sd.gold = 777;
             sd.bag.Add("potion_hp"); sd.equipped[0] = "w_blue_01";
+            sd.inCamp = false; sd.hp = 63.5f; sd.stamina = 28f;
+            sd.levelCleared = true; sd.playerX = 38.5f;
             SaveManager.Save(99, sd);
             SaveData back = SaveManager.Load(99);
             Check("存档往返-职业", back != null && back.profession == "mage");
             Check("存档往返-关卡", back != null && back.level == 5);
             Check("存档往返-金币", back != null && back.gold == 777);
             Check("存档往返-背包", back != null && back.bag.Contains("potion_hp"));
+            Check("存档记录关卡阶段与状态",
+                  back != null && !back.inCamp &&
+                  Mathf.Approximately(back.hp, 63.5f) && Mathf.Approximately(back.stamina, 28f));
+            Check("存档记录清场状态与玩家位置",
+                  back != null && back.levelCleared && Mathf.Approximately(back.playerX, 38.5f));
+            Check("存档描述区分营地/已清场关卡",
+                  SaveManager.Describe(99).Contains("关卡已清场"));
             SaveManager.Delete(99);
             Check("删除测试存档", !SaveManager.Has(99));
 
@@ -132,6 +141,14 @@ public static class SmokeSelfTest
                   backRt.anchoredPosition.x + backRt.sizeDelta.x <= settingsRoot.sizeDelta.x &&
                   -backRt.anchoredPosition.y >= 0f &&
                   -backRt.anchoredPosition.y + backRt.sizeDelta.y <= settingsRoot.sizeDelta.y);
+            RectTransform resumeRt = settingsRoot != null ? settingsRoot.Find("Resume") as RectTransform : null;
+            sp.OpenInGame(null);
+            Check("游戏内设置出现继续游戏按钮",
+                  resumeRt != null && resumeRt.gameObject.activeSelf &&
+                  backRt != null && backRt.anchoredPosition.x + backRt.sizeDelta.x <= settingsRoot.sizeDelta.x &&
+                  backRt.GetComponentInChildren<Text>().text.Contains("主菜单"));
+            sp.Open();
+            Check("主菜单设置隐藏继续游戏按钮", resumeRt != null && !resumeRt.gameObject.activeSelf);
             RectTransform modeRow = settingsRoot != null ? settingsRoot.Find("ModeRow") as RectTransform : null;
             Check("窗口模式三按钮齐全",
                   modeRow != null && modeRow.Find("Mode0") != null &&
@@ -331,6 +348,41 @@ public static class SmokeSelfTest
             string shopSrc = File.ReadAllText(Path.Combine(Application.dataPath, "Scripts/UI/ShopPanel.cs"));
             Check("商店刷新固定 5 金", shopSrc.Contains("return 5;") &&
                   !shopSrc.Contains("refreshCount * 25") && !shopSrc.Contains("currentLevel * 10"));
+            Check("营地金币顶栏由事件同步刷新",
+                  campSrc.Contains("EventBus.GoldChanged += OnGoldChanged"));
+
+            // 14) 全关卡出生距离：首个敌人必须在近战索敌半径（12）之外
+            GameObject spawnPlayerGo = new GameObject("__spawn_player__");
+            InventoryComponent spawnInv = spawnPlayerGo.AddComponent<InventoryComponent>();
+            SetBonusComponent spawnBonus = spawnPlayerGo.AddComponent<SetBonusComponent>();
+            PlayerController spawnPlayer = spawnPlayerGo.AddComponent<PlayerController>();
+            spawnPlayer.Setup("warrior", spawnInv, spawnBonus, 1.5f);
+            GameObject levelHost = new GameObject("__spawn_level__");
+            LevelManager spawnLevel = levelHost.AddComponent<LevelManager>();
+            float nearestSpawn = float.MaxValue;
+            for (int lv = 0; lv < GameData.LevelCount; lv++)
+            {
+                spawnLevel.Build(lv, spawnPlayer, spawnInv, spawnBonus);
+                float px = spawnPlayer.transform.position.x;
+                for (int i = 0; i < EnemyController.All.Count; i++)
+                {
+                    EnemyController e = EnemyController.All[i];
+                    if (e != null) nearestSpawn = Mathf.Min(nearestSpawn, Mathf.Abs(e.transform.position.x - px));
+                }
+            }
+            Check("全关卡首怪不与玩家贴脸", nearestSpawn >= 12f,
+                  "最近距离=" + nearestSpawn.ToString("F2"));
+
+            // 读取“已清场”存档：不残留敌人，出口直接开启
+            spawnLevel.Build(0, spawnPlayer, spawnInv, spawnBonus);
+            spawnLevel.RestoreCleared(true);
+            GameObject restoredExit = GameObject.Find("Exit");
+            Check("清场存档恢复后出口开启且无残敌",
+                  spawnLevel.ExitReady && EnemyController.All.Count == 0 &&
+                  restoredExit != null && restoredExit.activeSelf);
+            spawnLevel.Clear();
+            UnityEngine.Object.DestroyImmediate(levelHost);
+            UnityEngine.Object.DestroyImmediate(spawnPlayerGo);
 
             // 还原用户设置，不污染正在运行的编辑器 / 玩家配置
             DisplaySettings.Preset = oldPreset;

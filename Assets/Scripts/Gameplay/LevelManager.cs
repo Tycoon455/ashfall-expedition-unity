@@ -7,6 +7,9 @@ public class LevelManager : MonoBehaviour
     public int LevelIndex { get; private set; }
     public float WorldWidth { get; private set; }
 
+    /// <summary>本关是否已清场并开启出口（供存档写入/恢复）。</summary>
+    public bool ExitReady { get { return exitReady; } }
+
     readonly List<GameObject> built = new List<GameObject>();
     PlayerController player;
     InventoryComponent inventory;
@@ -62,17 +65,24 @@ public class LevelManager : MonoBehaviour
         ground.transform.position = new Vector3(WorldWidth * 0.5f, floor - 1.2f, 0f);
         built.Add(ground);
 
-        // 出生与敌人
+        // 出生与敌人：首怪放在玩家索敌半径（12）之外，避免一进关卡就贴脸开打
         player.SetLevelWidth(WorldWidth);
-        player.transform.position = new Vector3(1.5f, floor + 1.1f, 0f);
-        float spacing = Mathf.Max(3f, (WorldWidth - 12f) / (Current.enemies.Length + 1));
-        for (int i = 0; i < Current.enemies.Length; i++)
+        const float PlayerSpawnX = 1.5f;
+        const float FirstEnemyX = 14f;   // 与玩家相距 12.5，大于近战怪 12 的索敌距离
+        const float ExitClearance = 4f;  // 末怪与出口留空，避免刚清场就撞传送门
+        player.transform.position = new Vector3(PlayerSpawnX, floor + 1.1f, 0f);
+
+        int count = Current.enemies.Length;
+        float lastX = Mathf.Max(FirstEnemyX, WorldWidth - ExitClearance);
+        for (int i = 0; i < count; i++)
         {
             EnemyData data = GameData.Enemy(Current.enemies[i]);
             if (data == null) continue;
             GameObject go = new GameObject("Enemy_" + data.id + "_" + i);
             EnemyController enemy = go.AddComponent<EnemyController>();
-            enemy.Setup(data, player, 6f + i * spacing, floor);
+            float x = count <= 1 ? FirstEnemyX
+                      : FirstEnemyX + (lastX - FirstEnemyX) * i / (count - 1);
+            enemy.Setup(data, player, x, floor);
         }
 
         // 出口：金色传送门模型（清场后出现），区别于营地的紫色传送门
@@ -144,6 +154,22 @@ public class LevelManager : MonoBehaviour
         if (exitMarker != null) exitMarker.SetActive(true);
         if (exitGlow != null) exitGlow.gameObject.SetActive(true);
         EventBus.RaiseMessage("清场完成，金色传送门已开启 · 走到右侧传送门前按 E 进入");
+    }
+
+    /// <summary>读取“已清场”存档：移除残敌/掉落，直接打开出口，不再重打一遍。</summary>
+    public void RestoreCleared(bool cleared)
+    {
+        if (!cleared) return;
+        for (int i = EnemyController.All.Count - 1; i >= 0; i--)
+        {
+            EnemyController e = EnemyController.All[i];
+            if (e != null) Destroy(e.gameObject);
+        }
+        EnemyController.All.Clear();
+        LootDrop.ClearAll();
+        exitReady = true;
+        if (exitMarker != null) exitMarker.SetActive(true);
+        if (exitGlow != null) exitGlow.gameObject.SetActive(true);
     }
 
     public bool PlayerAtExit()

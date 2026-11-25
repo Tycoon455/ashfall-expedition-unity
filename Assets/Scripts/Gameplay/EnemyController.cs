@@ -87,6 +87,8 @@ public class EnemyController : MonoBehaviour
         if (!isBoss) BuildHealthBar();
 
         transform.position = new Vector3(x, floor + 0.9f * scale, 0f);
+        // 入场缓冲：即使玩家立刻贴近，也不会在生成当帧吃到一次攻击
+        nextAttack = Time.time + 1.2f;
         All.Add(this);
     }
 
