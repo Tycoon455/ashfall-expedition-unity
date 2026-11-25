@@ -39,6 +39,7 @@ public class GameController : MonoBehaviour
     SettingsPanel settings;
     ShopPanel shop;
     InventoryPanel bagPanel;
+    SaveSlotPanel saveSlots;
 
     /// <summary>供营地地图读取金币显示。</summary>
     public InventoryComponent Inventory { get { return inventory; } }
@@ -48,6 +49,7 @@ public class GameController : MonoBehaviour
     Text overlayTitle;
     string overlayButtonAction;
     bool panelsOpen;
+    int activeSaveSlot = 1;          // 最近保存/读取的槽位：退出保存沿用该槽，不再写死槽1
     CampCheckpoint campCheckpoint;   // 进入营地时的快照，用于死亡回滚
 
     void Awake()
@@ -90,7 +92,7 @@ public class GameController : MonoBehaviour
         camp.Build(canvas.transform);
         camp.OnShop += OpenShop;
         camp.OnInventory += OpenBag;
-        camp.OnSave += () => SaveGame(1);
+        camp.OnSave += OpenSaveSlots;
         camp.OnNext += NextLevel;
         camp.OnMenu += ShowMenu;
 
@@ -115,6 +117,12 @@ public class GameController : MonoBehaviour
         bagGo.transform.SetParent(transform, false);
         bagPanel = bagGo.AddComponent<InventoryPanel>();
         bagPanel.Build(canvas.transform, ClosePanels);
+
+        // 营地记忆石碑：三存档槽选择面板（选择后确认保存）
+        GameObject saveSlotsGo = new GameObject("SaveSlotPanel");
+        saveSlotsGo.transform.SetParent(transform, false);
+        saveSlots = saveSlotsGo.AddComponent<SaveSlotPanel>();
+        saveSlots.Build(canvas.transform);
 
         BuildOverlay();
 
@@ -306,7 +314,7 @@ public class GameController : MonoBehaviour
         }
         if (State == GameState.Camp || State == GameState.Level)
         {
-            SaveGame(1);
+            SaveGame(activeSaveSlot);
             ShowMenu();
         }
     }
@@ -333,6 +341,7 @@ public class GameController : MonoBehaviour
             EventBus.RaiseMessage("该槽位没有存档");
             return;
         }
+        activeSaveSlot = slot; // 之后退出保存仍写回这个槽，不跳回槽1
         ProfessionId = data.profession;
         playerObj.GetComponent<GameActorTag>().professionId = ProfessionId;
         int savedIndex = Mathf.Clamp(data.level - 1, 0, GameData.LevelCount - 1);
@@ -346,7 +355,13 @@ public class GameController : MonoBehaviour
             player.Stamina.Current = Mathf.Clamp(data.stamina, 0f, player.Stamina.Max);
         CaptureCampCheckpoint(); // 载入状态即为本关前置营地基线
         // 回到存档点：营地存档回营地，关卡存档进关卡；不再一律推进到下一关
-        if (data.inCamp) EnterCamp();
+        if (data.inCamp)
+        {
+            EnterCamp();
+            // 营地存档也恢复到石碑前的位置，而不是每次都回到营地入口
+            if (data.playerX >= 0f && campMap != null)
+                campMap.SetPlayerX(data.playerX);
+        }
         else
         {
             EnterLevel();
@@ -424,6 +439,8 @@ public class GameController : MonoBehaviour
     {
         ClosePanels();
         State = GameState.Camp;
+        // 从主菜单读取营地存档时必须收起主菜单，否则它会盖住营地画面，看起来像"读档没反应"
+        if (menu != null) menu.Hide();
         player.InputEnabled = false;
         if (levels != null) levels.Clear();
         if (campMap != null) campMap.Enter(player, LevelIndex0);
@@ -542,10 +559,30 @@ public class GameController : MonoBehaviour
         bagPanel.Open(inventory, bonus, player.Health, player);
     }
 
+    /// <summary>营地记忆石碑：弹出三个存档槽，确认后写入所选槽位。</summary>
+    public void OpenSaveSlots()
+    {
+        if (State != GameState.Camp || saveSlots == null) return;
+        if (panelsOpen) ClosePanels();
+        panelsOpen = true;
+        player.InputEnabled = false;
+        if (campMap != null) campMap.Paused = true;
+        camp.Hide();
+        saveSlots.Open(SaveToSlot, ClosePanels);
+    }
+
+    void SaveToSlot(int slot)
+    {
+        activeSaveSlot = slot;
+        SaveGame(slot);
+        EventBus.RaiseMessage("进度已保存到槽位 " + slot + "，回主菜单读取该槽即可继续");
+    }
+
     void ClosePanels()
     {
         if (shop != null) shop.Hide();
         if (bagPanel != null) bagPanel.Hide();
+        if (saveSlots != null) saveSlots.Hide();
         panelsOpen = false;
         if (player != null && State == GameState.Level) player.InputEnabled = true;
         if (campMap != null)
@@ -558,7 +595,7 @@ public class GameController : MonoBehaviour
     /// <summary>设置面板里的「保存并回主菜单」：先落盘当前进度，再回主菜单。</summary>
     public void SaveAndShowMenu()
     {
-        if (State == GameState.Camp || State == GameState.Level) SaveGame(1);
+        if (State == GameState.Camp || State == GameState.Level) SaveGame(activeSaveSlot);
         ShowMenu();
     }
 
@@ -574,6 +611,7 @@ public class GameController : MonoBehaviour
         if (settings != null) settings.Hide();
         shop.Hide();
         bagPanel.Hide();
+        if (saveSlots != null) saveSlots.Hide();
         overlay.gameObject.SetActive(false);
         panelsOpen = false;
         menu.Show();

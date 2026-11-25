@@ -175,6 +175,15 @@ public class CampMap : MonoBehaviour
         if (canvasGo != null) canvasGo.SetActive(false);
     }
 
+    /// <summary>读取营地存档后恢复到石碑前的位置，而不是固定回到入口。</summary>
+    public void SetPlayerX(float x)
+    {
+        if (player == null) return;
+        Vector3 pos = player.transform.position;
+        pos.x = Mathf.Clamp(x, 0.5f, Width - 0.5f);
+        player.transform.position = pos;
+    }
+
     public void RefreshInfo(int levelIndex0)
     {
         currentLevel0 = levelIndex0;
@@ -241,7 +250,7 @@ public class CampMap : MonoBehaviour
     {
         if (id == "shop") gc.OpenShop();
         else if (id == "hero") gc.OpenBag();
-        else if (id == "save") gc.SaveGame(1);
+        else if (id == "save") gc.OpenSaveSlots();
         else if (id == "gate") gc.NextLevel();
     }
 }

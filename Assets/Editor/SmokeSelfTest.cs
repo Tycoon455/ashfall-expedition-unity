@@ -96,6 +96,21 @@ public static class SmokeSelfTest
             SaveManager.Delete(99);
             Check("删除测试存档", !SaveManager.Has(99));
 
+            // 手动多槽互不覆盖：石碑选槽2保存后，槽1的旧档必须原样保留
+            SaveData slotA = new SaveData();
+            slotA.profession = "warrior"; slotA.level = 3; slotA.gold = 111;
+            SaveData slotB = new SaveData();
+            slotB.profession = "mage"; slotB.level = 7; slotB.gold = 222;
+            SaveManager.Save(97, slotA);
+            SaveManager.Save(98, slotB);
+            SaveData readA = SaveManager.Load(97), readB = SaveManager.Load(98);
+            Check("手动槽97/98互不覆盖",
+                  readA != null && readB != null &&
+                  readA.profession == "warrior" && readA.gold == 111 &&
+                  readB.profession == "mage" && readB.gold == 222);
+            SaveManager.Delete(97);
+            SaveManager.Delete(98);
+
             // 7) 关键 Sprite 素材可加载
             Check("战士精灵可加载", Resources.Load<Texture2D>("Art/Characters/warrior") != null);
             Check("营地背景可加载", Resources.Load<Texture2D>("Art/Backgrounds/camp") != null);
@@ -158,6 +173,43 @@ public static class SmokeSelfTest
             UnityEngine.Object.DestroyImmediate(uiCanvasGo);
             EventSystem es = UnityEngine.Object.FindObjectOfType<EventSystem>();
             if (es != null) UnityEngine.Object.DestroyImmediate(es.gameObject);
+
+            // 8.5) 记忆石碑存档槽面板：三槽可选、确认保存回调、关闭回调
+            GameObject slotCanvasGo = new GameObject("__save_slot_canvas__",
+                typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            GameObject slotHostGo = new GameObject("__save_slot_panel__");
+            SaveSlotPanel slotPanel = slotHostGo.AddComponent<SaveSlotPanel>();
+            slotPanel.Build(slotCanvasGo.transform);
+            RectTransform slotRoot = slotCanvasGo.transform.Find("SaveSlotPanel") as RectTransform;
+            bool slotsOk = slotRoot != null;
+            for (int i = 1; i <= GameConfig.SaveSlotCount; i++)
+            {
+                RectTransform rt = slotRoot != null ? slotRoot.Find("Slot" + i) as RectTransform : null;
+                slotsOk = slotsOk && rt != null &&
+                    rt.anchoredPosition.x >= 0f &&
+                    rt.anchoredPosition.x + rt.sizeDelta.x <= slotRoot.sizeDelta.x &&
+                    -rt.anchoredPosition.y >= 0f &&
+                    -rt.anchoredPosition.y + rt.sizeDelta.y <= slotRoot.sizeDelta.y;
+            }
+            Check("记忆石碑面板三槽位按钮在面板内", slotsOk);
+            int savedSlot = -1;
+            bool slotClosed = false;
+            slotPanel.Open(s => savedSlot = s, () => slotClosed = true);
+            Check("石碑面板打开后置顶显示", slotPanel.IsOpen &&
+                  slotCanvasGo.transform.GetChild(slotCanvasGo.transform.childCount - 1) == slotRoot);
+            RectTransform slot2 = slotRoot.Find("Slot2") as RectTransform;
+            slot2.GetComponent<Button>().onClick.Invoke();
+            Check("选择槽位高亮并更新选中值", slotPanel.SelectedSlot == 2 &&
+                  slot2.GetComponent<Image>().color.r > 0.21f);
+            slotRoot.Find("SaveBtn").GetComponent<Button>().onClick.Invoke();
+            Check("点击保存写入所选槽位", savedSlot == 2, "回调槽位=" + savedSlot);
+            Check("保存后显示成功提示且面板不关闭",
+                  slotPanel.IsOpen && !slotClosed &&
+                  slotRoot.Find("Status").GetComponent<Text>().text.Contains("槽位 2"));
+            slotRoot.Find("CancelBtn").GetComponent<Button>().onClick.Invoke();
+            Check("取消关闭面板并回调调用方", !slotPanel.IsOpen && slotClosed);
+            UnityEngine.Object.DestroyImmediate(slotHostGo);
+            UnityEngine.Object.DestroyImmediate(slotCanvasGo);
 
             // 9) 抠图复核：角色/敌人/道具不应存在大片中性白残留
             float worstWhiteRatio = 0f;
@@ -350,6 +402,21 @@ public static class SmokeSelfTest
                   !shopSrc.Contains("refreshCount * 25") && !shopSrc.Contains("currentLevel * 10"));
             Check("营地金币顶栏由事件同步刷新",
                   campSrc.Contains("EventBus.GoldChanged += OnGoldChanged"));
+            Check("营地石碑弹出三存档槽并写入所选槽",
+                  campSrc.Contains("id == \"save\") gc.OpenSaveSlots()") &&
+                  gcSrc.Contains("public void OpenSaveSlots()") &&
+                  gcSrc.Contains("saveSlots.Open(SaveToSlot, ClosePanels)") &&
+                  gcSrc.Contains("SaveGame(slot);"));
+            Check("存档面板纳入统一 Esc 关闭",
+                  gcSrc.Contains("saveSlots.Hide();") && gcSrc.Contains("if (panelsOpen) { ClosePanels(); return; }"));
+            Check("营地存档恢复石碑前位置",
+                  gcSrc.Contains("campMap.SetPlayerX(data.playerX)") &&
+                  campSrc.Contains("public void SetPlayerX(float x)"));
+            Check("退出保存沿用所选槽而非固定槽1",
+                  gcSrc.Contains("int activeSaveSlot = 1;") &&
+                  gcSrc.Contains("SaveGame(activeSaveSlot);") &&
+                  gcSrc.Contains("activeSaveSlot = slot;"));
+            Check("读取营地存档时收起主菜单", enterCampSrc.Contains("menu.Hide()"));
 
             // 14) 全关卡出生距离：首个敌人必须在近战索敌半径（12）之外
             GameObject spawnPlayerGo = new GameObject("__spawn_player__");
